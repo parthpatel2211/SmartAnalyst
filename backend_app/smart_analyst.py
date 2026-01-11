@@ -62,7 +62,8 @@ async def ask_question(question: str = Form(...), chart: str = Form(default="no"
         )
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.1",
+            temperature=0,
             messages=[
                 {"role": "system", "content": "You’re a data analyst and pandas expert. Output only pandas code."},
                 {"role": "user", "content": prompt}
