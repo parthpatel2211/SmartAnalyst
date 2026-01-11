@@ -23,7 +23,8 @@ async def nl2sql(file: UploadFile, question: str = Form(...)):
 
         prompt = f"Convert this question to an SQL query for a table named 'data': {question}"
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.1",
+            temperature=0,
             messages=[
                 {"role": "system", "content": "You’re an SQL expert. Only produce SELECT queries."},
                 {"role": "user", "content": prompt}
