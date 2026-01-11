@@ -1,6 +1,6 @@
 # 🤖 Smart Analyst
 
-An AI-powered data analysis tool that allows you to interact with your CSV data using natural language queries. Built with FastAPI, React, and OpenAI's GPT-4.
+An AI-powered data analysis tool that allows you to interact with your CSV data using natural language queries. Built with FastAPI, React, and OpenAI's GPT-5.
 <img width="1513" height="522" alt="image" src="https://github.com/user-attachments/assets/1122eb71-537d-42fb-8882-b778049053f2" />
 
 
