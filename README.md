@@ -7,7 +7,7 @@ An AI-powered data analysis tool that allows you to interact with your CSV data 
 ## ✨ Features
 
 - **Natural Language Queries**: Ask questions about your data in plain English
-- **Automated Data Analysis**: Leverages GPT-4 to generate pandas code dynamically
+- **Automated Data Analysis**: Leverages GPT-5 to generate pandas code dynamically
 - **Visual Insights**: Generate charts and visualizations on demand
 - **Data Profiling**: Get instant statistical summaries of your dataset
 - **SQL Translation**: Convert natural language to SQL queries (NL2SQL)
