@@ -98,5 +98,32 @@ def test_every_insight_has_a_title_and_detail():
         assert insight.severity in {"high", "medium", "low"}
 
 
+def test_repetitive_findings_are_capped_at_the_strongest_few():
+    """A wide table of related measures trips the same rule in every column.
+
+    Reporting one observation eight times reads as noise, so each kind is
+    capped and the strongest are kept.
+    """
+    rng = np.random.default_rng(11)
+    df = pd.DataFrame({f"m{i}": rng.gamma(1.1, 40.0, 400) for i in range(8)})
+    insights = _insights_for(df)
+    for kind in ("skewed", "outliers", "strong_correlation"):
+        assert len([i for i in insights if i.kind == kind]) <= 3, kind
+
+
+def test_the_most_skewed_column_is_the_one_reported():
+    rng = np.random.default_rng(12)
+    df = pd.DataFrame(
+        {
+            "mild": rng.gamma(9.0, 1.0, 500),
+            "extreme": rng.gamma(0.4, 100.0, 500),
+            "normal": rng.normal(0, 1, 500),
+        }
+    )
+    skewed = [i for i in _insights_for(df) if i.kind == "skewed"]
+    assert skewed
+    assert "extreme" in skewed[0].columns
+
+
 def test_empty_dataframe_produces_no_insights_and_does_not_crash():
     assert _insights_for(pd.DataFrame({"a": []})) == []

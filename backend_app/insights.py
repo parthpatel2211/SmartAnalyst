@@ -12,13 +12,18 @@ import pandas as pd
 from backend_app.models import CorrelationMatrix, DatasetProfile, Insight
 
 CORRELATION_THRESHOLD = 0.7
-MAX_CORRELATION_INSIGHTS = 3
 
 HIGH_NULL_PCT = 20.0
 CRITICAL_NULL_PCT = 50.0
 
 SKEW_THRESHOLD = 1.0
 OUTLIER_PCT_THRESHOLD = 5.0
+
+#: Findings of the same kind are capped at the strongest few. A wide table of
+#: related measures will trip the same rule in every column -- six columns
+#: reported as right-skewed is one observation printed six times, and a panel
+#: of near-duplicates reads as noise rather than analysis.
+MAX_PER_KIND = 3
 
 HIGH_CARDINALITY_RATIO = 0.5
 HIGH_CARDINALITY_MIN_DISTINCT = 20
@@ -30,7 +35,7 @@ _SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 def _strong_correlations(corr: CorrelationMatrix) -> list[Insight]:
     found = []
-    for pair in corr.pairs[:MAX_CORRELATION_INSIGHTS]:
+    for pair in corr.pairs[:MAX_PER_KIND]:
         if abs(pair.value) < CORRELATION_THRESHOLD:
             break  # pairs are ranked, so nothing after this qualifies either
         direction = "positively" if pair.value > 0 else "negatively"
@@ -87,13 +92,18 @@ def _constant_columns(profile: DatasetProfile) -> list[Insight]:
 
 
 def _skewed_columns(profile: DatasetProfile) -> list[Insight]:
+    candidates = [
+        column
+        for column in profile.columns
+        if column.semantic_type == "numeric"
+        and column.skew is not None
+        and abs(column.skew) >= SKEW_THRESHOLD
+    ]
+    candidates.sort(key=lambda column: abs(column.skew or 0), reverse=True)
+
     found = []
-    for column in profile.columns:
-        if column.semantic_type != "numeric" or column.skew is None:
-            continue
-        if abs(column.skew) < SKEW_THRESHOLD:
-            continue
-        side = "right" if column.skew > 0 else "left"
+    for column in candidates[:MAX_PER_KIND]:
+        side = "right" if (column.skew or 0) > 0 else "left"
         found.append(
             Insight(
                 kind="skewed",
@@ -111,26 +121,27 @@ def _skewed_columns(profile: DatasetProfile) -> list[Insight]:
 
 
 def _outlier_heavy_columns(profile: DatasetProfile) -> list[Insight]:
-    found = []
-    for column in profile.columns:
-        if column.outlier_count is None or column.non_null_count == 0:
-            continue
-        pct = column.outlier_count / column.non_null_count * 100
-        if pct < OUTLIER_PCT_THRESHOLD:
-            continue
-        found.append(
-            Insight(
-                kind="outliers",
-                severity="medium",
-                title=f"{column.name} has {column.outlier_count} outliers ({pct:.0f}%)",
-                detail=(
-                    "Values fall more than 1.5 x IQR beyond the quartiles. Worth "
-                    "checking for data-entry errors before averaging."
-                ),
-                columns=[column.name],
-            )
+    candidates = [
+        (column, column.outlier_count / column.non_null_count * 100)
+        for column in profile.columns
+        if column.outlier_count is not None and column.non_null_count > 0
+    ]
+    candidates = [(c, pct) for c, pct in candidates if pct >= OUTLIER_PCT_THRESHOLD]
+    candidates.sort(key=lambda item: item[1], reverse=True)
+
+    return [
+        Insight(
+            kind="outliers",
+            severity="medium",
+            title=f"{column.name} has {column.outlier_count} outliers ({pct:.0f}%)",
+            detail=(
+                "Values fall more than 1.5 x IQR beyond the quartiles. Worth "
+                "checking for data-entry errors before averaging."
+            ),
+            columns=[column.name],
         )
-    return found
+        for column, pct in candidates[:MAX_PER_KIND]
+    ]
 
 
 def _duplicate_rows(profile: DatasetProfile) -> list[Insight]:

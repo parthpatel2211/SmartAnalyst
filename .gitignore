@@ -24,3 +24,6 @@ build/
 .idea/
 .vscode/
 *.log
+
+# Personal assets, not repo content
+LinkedInPost.png
