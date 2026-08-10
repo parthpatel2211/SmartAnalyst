@@ -23,19 +23,14 @@ MAX_BAR_CATEGORIES = 25
 #: How many measures to plot on one chart before it becomes noise.
 MAX_SERIES = 3
 
-#: Below this many rows, the "nearly all values are distinct" signal that
-#: marks an identifier is meaningless: a GROUP BY returning three unique
-#: counts is not returning three IDs. The identifier rule is only trusted on
-#: results large enough for uniqueness to carry information.
-MIN_ROWS_FOR_ID_INFERENCE = 20
-
-
 def _classify_columns(result: QueryResult) -> dict[str, list[str]]:
     """Sort result columns into the roles a chart can use.
 
-    Identifiers get their own bucket and are never plotted as measures.
-    Histogramming a column of order numbers produces a picture of the
-    numbering scheme, not of the data.
+    Identifiers get their own bucket and are never plotted as measures:
+    histogramming a column of order numbers pictures the numbering scheme
+    rather than the data. The row-count floor that stops small aggregate
+    results being misread as identifiers lives in
+    :func:`profiling.infer_semantic_type`, so it is not repeated here.
     """
     frame = pd.DataFrame(result.rows, columns=result.columns)
     buckets: dict[str, list[str]] = {
@@ -48,23 +43,14 @@ def _classify_columns(result: QueryResult) -> dict[str, list[str]]:
     if frame.empty:
         return buckets
 
-    trust_id_inference = result.row_count >= MIN_ROWS_FOR_ID_INFERENCE
-
     for column in result.columns:
         # Values arrive from JSON-shaped dicts, so re-infer rather than trusting dtype.
         series = frame[column].infer_objects()
         semantic = infer_semantic_type(series)
 
-        if semantic == "id":
-            if trust_id_inference:
-                buckets["id"].append(column)
-            else:
-                buckets["numeric"].append(column)
-        elif semantic == "numeric":
-            buckets["numeric"].append(column)
-        elif semantic == "datetime":
-            buckets["datetime"].append(column)
-        elif semantic in {"categorical", "boolean"}:
+        if semantic in buckets:
+            buckets[semantic].append(column)
+        elif semantic == "boolean":
             buckets["categorical"].append(column)
 
     return buckets

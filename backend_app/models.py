@@ -117,3 +117,36 @@ class ChartSpec(BaseModel):
     y: list[str] = []
     series: str | None = None
     title: str = ""
+
+
+# --------------------------------------------------------------------------
+# Requests and responses
+# --------------------------------------------------------------------------
+
+
+class UploadResponse(BaseModel):
+    session_id: str
+    name: str
+    row_count: int
+    column_count: int
+    columns: list[ColumnSchema]
+
+
+class InsightsResponse(BaseModel):
+    insights: list[Insight]
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+class AskResponse(BaseModel):
+    question: str
+    #: The normalized query that actually ran, shown to the user verbatim.
+    sql: str
+    explanation: str
+    columns: list[str]
+    rows: list[dict]
+    row_count: int
+    truncated: bool
+    chart: ChartSpec

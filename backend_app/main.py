@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend_app.config import get_settings
 from backend_app.logging_filters import RedactingFilter
+from backend_app.routers import ask, datasets
 
 DESCRIPTION = """\
 Ask questions about a CSV in plain English.
@@ -55,6 +56,12 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         """Liveness probe, also used by the frontend to detect a cold start."""
         return {"status": "ok"}
+
+    # The prototype defined routers in two modules and never registered
+    # either, so /profile and /nl2sql were unreachable. These two lines are
+    # the difference between the feature existing and the feature working.
+    app.include_router(datasets.router)
+    app.include_router(ask.router)
 
     return app
 

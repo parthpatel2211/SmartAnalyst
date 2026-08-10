@@ -21,6 +21,13 @@ from backend_app.models import (
 #: identifier rather than a measure.
 ID_CARDINALITY_THRESHOLD = 0.95
 
+#: Below this many values, near-total distinctness carries no information:
+#: three sales figures that happen to differ are three sales figures, not
+#: three identifiers. Without this floor, every small CSV and every GROUP BY
+#: result has its measures misread as keys, which strips them out of the
+#: correlations and tells the model not to aggregate them.
+MIN_ROWS_FOR_ID_INFERENCE = 20
+
 #: Above this many distinct strings, a column is free text rather than a
 #: category worth charting.
 CATEGORICAL_MAX_DISTINCT = 50
@@ -47,7 +54,9 @@ def infer_semantic_type(series: pd.Series) -> str:
     if pd.api.types.is_numeric_dtype(series):
         ratio = non_null.nunique() / len(non_null)
         nearly_unique_integers = (
-            ratio >= ID_CARDINALITY_THRESHOLD and pd.api.types.is_integer_dtype(series)
+            len(non_null) >= MIN_ROWS_FOR_ID_INFERENCE
+            and ratio >= ID_CARDINALITY_THRESHOLD
+            and pd.api.types.is_integer_dtype(series)
         )
         return "id" if nearly_unique_integers else "numeric"
     if non_null.nunique() <= CATEGORICAL_MAX_DISTINCT:

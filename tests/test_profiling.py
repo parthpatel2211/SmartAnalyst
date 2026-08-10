@@ -140,6 +140,24 @@ def test_infer_semantic_type_on_empty_series():
     assert infer_semantic_type(pd.Series([], dtype=object)) == "text"
 
 
+def test_small_datasets_do_not_have_their_measures_read_as_identifiers():
+    """Three sales figures that happen to differ are measures, not keys.
+
+    Near-total distinctness only carries information once there are enough
+    rows for it to be surprising. Without a floor, every small CSV loses its
+    numeric columns from the correlations and the model is told not to
+    aggregate them.
+    """
+    small = pd.DataFrame({"revenue": [100, 200, 150], "cost": [60, 120, 90]})
+    assert infer_semantic_type(small["revenue"]) == "numeric"
+    assert set(correlations(small).columns) == {"revenue", "cost"}
+
+
+def test_large_datasets_still_detect_identifiers():
+    large = pd.DataFrame({"order_id": range(1, 101), "revenue": [1.5] * 100})
+    assert infer_semantic_type(large["order_id"]) == "id"
+
+
 def test_high_cardinality_strings_are_text_not_categorical():
     series = pd.Series([f"note-{i}" for i in range(200)])
     assert infer_semantic_type(series) == "text"
