@@ -63,6 +63,10 @@ class ColumnProfile(BaseModel):
     skew: float | None = None
     outlier_count: int | None = None
 
+    #: Datetime columns only: the span the column covers, ISO formatted.
+    min_label: str | None = None
+    max_label: str | None = None
+
 
 class DatasetProfile(BaseModel):
     row_count: int

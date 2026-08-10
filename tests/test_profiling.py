@@ -140,6 +140,18 @@ def test_infer_semantic_type_on_empty_series():
     assert infer_semantic_type(pd.Series([], dtype=object)) == "text"
 
 
+def test_datetime_column_reports_the_span_it_covers(frame):
+    order_date = next(c for c in profile_dataset(frame).columns if c.name == "order_date")
+    assert order_date.min_label == "2024-01-01"
+    assert order_date.max_label is not None
+    assert order_date.max_label > order_date.min_label
+
+
+def test_non_datetime_columns_have_no_span(frame):
+    revenue = next(c for c in profile_dataset(frame).columns if c.name == "revenue")
+    assert revenue.min_label is None
+
+
 def test_small_datasets_do_not_have_their_measures_read_as_identifiers():
     """Three sales figures that happen to differ are measures, not keys.
 

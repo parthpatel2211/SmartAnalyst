@@ -21,3 +21,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Bundled at build time from ../data
+public/sample_orders.csv

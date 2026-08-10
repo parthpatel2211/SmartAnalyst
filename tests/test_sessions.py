@@ -126,6 +126,58 @@ def test_rejects_a_header_only_file():
         read_csv_limited(b"a,b\n", max_bytes=10_000, max_rows=1000)
 
 
+# --------------------------------------------------------------------------
+# Datetime coercion
+# --------------------------------------------------------------------------
+
+
+def test_date_column_becomes_a_real_datetime():
+    """Left as text, a date column costs the tool its time axis: no DATE_TRUNC
+    in DuckDB, no line charts, and the model told the column is free text."""
+    raw = b"order_date,revenue\n2024-01-01,10\n2024-02-01,20\n2024-03-01,30\n"
+    frame = read_csv_limited(raw, max_bytes=10_000, max_rows=1000)
+    assert pd.api.types.is_datetime64_any_dtype(frame["order_date"])
+
+
+def test_slash_separated_dates_are_parsed():
+    raw = b"d,v\n01/15/2024,1\n02/20/2024,2\n03/25/2024,3\n"
+    frame = read_csv_limited(raw, max_bytes=10_000, max_rows=1000)
+    assert pd.api.types.is_datetime64_any_dtype(frame["d"])
+
+
+def test_numeric_columns_are_not_turned_into_dates():
+    """A year, a postcode, and an ID are all bare numbers, not timestamps."""
+    raw = b"year,postcode,amount\n2024,90210,15\n2023,10001,20\n2022,60601,25\n"
+    frame = read_csv_limited(raw, max_bytes=10_000, max_rows=1000)
+    for column in ("year", "postcode", "amount"):
+        assert not pd.api.types.is_datetime64_any_dtype(frame[column]), column
+
+
+def test_category_labels_are_not_turned_into_dates():
+    raw = b"region,v\nNorth,1\nSouth,2\nEast,3\n"
+    frame = read_csv_limited(raw, max_bytes=10_000, max_rows=1000)
+    assert not pd.api.types.is_datetime64_any_dtype(frame["region"])
+
+
+def test_mostly_unparseable_column_is_left_alone():
+    raw = b"note,v\n2024-01-01,1\nnot a date,2\nalso not,3\nnope,4\n"
+    frame = read_csv_limited(raw, max_bytes=10_000, max_rows=1000)
+    assert not pd.api.types.is_datetime64_any_dtype(frame["note"])
+
+
+def test_coerced_dates_reach_duckdb_as_timestamps():
+    """DATE_TRUNC is what makes 'revenue by month' answerable at all."""
+    raw = b"order_date,revenue\n2024-01-05,10\n2024-01-20,20\n2024-02-03,30\n"
+    store = SessionStore(ttl_seconds=1800, max_sessions=5)
+    session = store.create(read_csv_limited(raw, max_bytes=10_000, max_rows=1000), name="t.csv")
+    rows = session.conn.execute(
+        "SELECT DATE_TRUNC('month', order_date) AS m, SUM(revenue) AS total "
+        "FROM data GROUP BY 1 ORDER BY 1"
+    ).fetchall()
+    assert len(rows) == 2
+    assert rows[0][1] == 30
+
+
 def test_size_error_message_states_the_limit():
     with pytest.raises(UploadTooLarge) as exc:
         read_csv_limited(b"x" * 100, max_bytes=50, max_rows=1000)

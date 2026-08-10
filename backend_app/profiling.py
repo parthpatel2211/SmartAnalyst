@@ -102,6 +102,18 @@ def _numeric_stats(series: pd.Series) -> dict:
     }
 
 
+def _datetime_span(series: pd.Series) -> dict:
+    """The period a date column covers, which is a headline fact about a
+    dataset and cannot be read off the numeric statistics."""
+    values = series.dropna()
+    if values.empty:
+        return {}
+    return {
+        "min_label": pd.Timestamp(values.min()).date().isoformat(),
+        "max_label": pd.Timestamp(values.max()).date().isoformat(),
+    }
+
+
 def _top_values(series: pd.Series) -> list[TopValue]:
     counts = series.dropna().value_counts().head(TOP_VALUE_LIMIT)
     return [TopValue(value=str(index), count=int(count)) for index, count in counts.items()]
@@ -118,7 +130,12 @@ def profile_dataset(df: pd.DataFrame) -> DatasetProfile:
         non_null = int(series.notna().sum())
         distinct = int(series.nunique(dropna=True))
 
-        stats = _numeric_stats(series) if semantic in {"numeric", "id"} else {}
+        stats: dict = {}
+        if semantic in {"numeric", "id"}:
+            stats = _numeric_stats(series)
+        elif semantic == "datetime":
+            stats = _datetime_span(series)
+
         top = _top_values(series) if semantic in {"categorical", "boolean", "text"} else []
 
         columns.append(

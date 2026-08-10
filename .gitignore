@@ -27,3 +27,6 @@ build/
 
 # Personal assets, not repo content
 LinkedInPost.png
+
+# Playwright MCP scratch output
+.playwright-mcp/

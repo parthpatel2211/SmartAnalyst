@@ -27,6 +27,10 @@ MAX_HISTORY_TURNS = 3
 
 _BYTES_PER_MB = 1_048_576
 
+#: Share of values that must parse as dates before a text column is converted.
+_DATETIME_PARSE_THRESHOLD = 0.9
+_DATETIME_SAMPLE_SIZE = 200
+
 
 class SessionNotFound(KeyError):
     """The requested session does not exist or has expired."""
@@ -61,7 +65,44 @@ def read_csv_limited(raw: bytes, *, max_bytes: int, max_rows: int) -> pd.DataFra
     if frame.empty or frame.columns.empty:
         raise UploadTooLarge("That file contains no data rows.")
 
-    return frame
+    return coerce_datetime_columns(frame)
+
+
+def _looks_like_datetime(series: pd.Series) -> bool:
+    sample = series.dropna().astype(str).head(_DATETIME_SAMPLE_SIZE)
+    if sample.empty:
+        return False
+
+    # A column of bare numbers is not a date. Without this guard a year column,
+    # a postcode, or an ID would all be silently converted.
+    if sample.str.fullmatch(r"[-+]?\d*\.?\d+").all():
+        return False
+
+    parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
+    return bool(parsed.notna().mean() >= _DATETIME_PARSE_THRESHOLD)
+
+
+def coerce_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Parse date-like text columns into real datetimes.
+
+    read_csv leaves dates as strings, which has consequences well past
+    cosmetics: DuckDB receives VARCHAR so DATE_TRUNC and date arithmetic fail,
+    the chart heuristic never sees a time axis so trends render as bars or
+    tables, and the model is told the column is free text. A dataset of orders
+    loses its most useful dimension.
+    """
+    converted = df.copy()
+    for column in converted.columns:
+        series = converted[column]
+        if not pd.api.types.is_object_dtype(series):
+            continue
+        if not _looks_like_datetime(series):
+            continue
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed")
+        # Only commit if the full column parses as well as the sample did.
+        if parsed.notna().mean() >= _DATETIME_PARSE_THRESHOLD:
+            converted[column] = parsed
+    return converted
 
 
 @dataclass
