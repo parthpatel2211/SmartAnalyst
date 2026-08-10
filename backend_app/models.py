@@ -4,6 +4,8 @@ These are the API contract. The frontend's ``types.ts`` mirrors this file
 field for field, so a rename here is a breaking change there.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 # --------------------------------------------------------------------------
@@ -81,3 +83,37 @@ class CorrelationMatrix(BaseModel):
     matrix: list[list[float | None]]
     #: Unique pairs ranked by absolute correlation, strongest first.
     pairs: list[CorrelationPair]
+
+
+# --------------------------------------------------------------------------
+# Insights
+# --------------------------------------------------------------------------
+
+
+class Insight(BaseModel):
+    """A finding computed deterministically from the data, never by a model."""
+
+    #: strong_correlation | high_nulls | constant_column | skewed |
+    #: outliers | duplicate_rows | high_cardinality
+    kind: str
+    severity: Literal["high", "medium", "low"]
+    title: str
+    detail: str
+    columns: list[str] = []
+
+
+# --------------------------------------------------------------------------
+# Charts
+# --------------------------------------------------------------------------
+
+#: Note the absence of pie and donut. Quantity encoded as angle is read less
+#: accurately than quantity encoded as length or position.
+ChartKind = Literal["bar", "line", "area", "scatter", "histogram", "table"]
+
+
+class ChartSpec(BaseModel):
+    kind: ChartKind
+    x: str | None = None
+    y: list[str] = []
+    series: str | None = None
+    title: str = ""
