@@ -103,7 +103,9 @@ def _function_names(node: exp.Expression) -> set[str]:
     if isinstance(node, exp.Func):
         try:
             names.update(n.lower() for n in type(node).sql_names())
-        except Exception:  # noqa: BLE001 - a node without sql_names is simply not a match
+        except NotImplementedError:
+            # Raised by the abstract exp.Func base, which carries no SQL name
+            # of its own and therefore cannot match the denylist.
             pass
     return names
 
