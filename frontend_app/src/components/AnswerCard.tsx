@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { toCsv } from "../lib/format";
 import type { Mode } from "../lib/palette";
 import type { AskResponse } from "../types";
-import ChartView from "./ChartView";
 import TableView from "./TableView";
+
+// Recharts is the largest dependency in the app and nothing needs it until an
+// answer renders a chart. The overview heatmap is a plain table, so the first
+// paint pulls no charting code at all.
+const ChartView = lazy(() => import("./ChartView"));
 
 type Tab = "chart" | "table" | "sql";
 
@@ -108,13 +112,22 @@ export default function AnswerCard({ answer, mode }: Props) {
 
       <div className="p-4">
         {tab === "chart" && (
-          <ChartView
-            spec={answer.chart}
-            columns={answer.columns}
-            rows={answer.rows}
-            truncated={answer.truncated}
-            mode={mode}
-          />
+          <Suspense
+            fallback={
+              <div
+                className="h-[320px] animate-pulse-soft rounded-lg"
+                style={{ background: "var(--surface-3)" }}
+              />
+            }
+          >
+            <ChartView
+              spec={answer.chart}
+              columns={answer.columns}
+              rows={answer.rows}
+              truncated={answer.truncated}
+              mode={mode}
+            />
+          </Suspense>
         )}
 
         {tab === "table" && (

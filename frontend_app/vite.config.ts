@@ -5,6 +5,11 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173 },
+  // No manualChunks here on purpose. Naming a chunk for Recharts makes it part
+  // of the entry's preload graph, so Vite emits a modulepreload link for it and
+  // it downloads on first paint -- which is exactly what lazily importing
+  // ChartView is meant to avoid. Left alone, Rollup splits along the dynamic
+  // import and the charting code is fetched only when a chart is first shown.
   test: {
     environment: "jsdom",
     globals: true,
