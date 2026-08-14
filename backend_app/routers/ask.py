@@ -16,7 +16,7 @@ from backend_app.deps import session_or_404
 from backend_app.engine import run_query
 from backend_app.llm import LlmError, ask_model, build_prompt, narrate, parse_response
 from backend_app.models import AskRequest, AskResponse
-from backend_app.sql_guard import SqlValidationError
+from backend_app.sql_guard import SqlValidationError, format_for_display
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ async def ask(
 
     return AskResponse(
         question=payload.question,
-        sql=result.sql,
+        sql=format_for_display(result.sql),
         answer=answer,
         explanation=proposal.explanation,
         chart_requested=proposal.chart_requested,

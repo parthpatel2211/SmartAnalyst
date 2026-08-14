@@ -308,4 +308,35 @@ def test_returned_sql_is_the_query_that_ran(client, session_id, monkeypatch):
     body = client.post(
         f"/datasets/{session_id}/ask", json={"question": "q"}, headers=KEY
     ).json()
-    assert body["sql"] == "SELECT region FROM data"
+    # Laid out over several lines for reading, but the same query.
+    assert "SELECT" in body["sql"]
+    assert "region" in body["sql"]
+    assert "FROM data" in body["sql"]
+
+
+def test_returned_sql_is_formatted_for_reading(client, session_id, monkeypatch):
+    """The SQL tab exists to be read. A single long line forces a horizontal
+    scrollbar and hides the end of the statement."""
+    _mock_model(
+        monkeypatch,
+        {
+            "sql": (
+                "SELECT region, SUM(revenue) AS total FROM data "
+                "GROUP BY region ORDER BY total DESC LIMIT 1"
+            ),
+            "chart": None,
+            "explanation": "x",
+        },
+    )
+    body = client.post(
+        f"/datasets/{session_id}/ask", json={"question": "top region"}, headers=KEY
+    ).json()
+    assert "\n" in body["sql"]
+    assert body["sql"].startswith("SELECT")
+
+
+def test_display_formatting_does_not_change_the_query(client, session_id, monkeypatch):
+    from backend_app.sql_guard import format_for_display, validate
+
+    original = "SELECT region, SUM(revenue) AS total FROM data GROUP BY region"
+    assert validate(format_for_display(original)) == validate(original)

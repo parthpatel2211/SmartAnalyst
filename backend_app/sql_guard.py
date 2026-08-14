@@ -155,3 +155,17 @@ def validate(sql: str) -> str:
             )
 
     return statement.sql(dialect=DIALECT)
+
+
+def format_for_display(sql: str) -> str:
+    """Lay a validated query out over multiple lines for reading.
+
+    Semantically identical to the input, so what is shown is still what ran.
+    Kept separate from :func:`validate`, whose single-line output is the
+    canonical form used for execution, logging, and comparison.
+    """
+    try:
+        statement = sqlglot.parse_one(sql, dialect=DIALECT)
+    except Exception:
+        return sql  # never let formatting cost someone their answer
+    return statement.sql(dialect=DIALECT, pretty=True)

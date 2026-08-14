@@ -152,13 +152,19 @@ export default function AnswerCard({ answer, mode }: Props) {
           />
         )}
 
+        {/* The SQL wraps rather than scrolling. This tab exists so the query
+            can be read, and a horizontal scrollbar hides the end of every
+            statement wider than the card. The server sends it pre-formatted
+            across several lines. */}
         {tab === "sql" && (
           <pre
-            className="overflow-x-auto rounded-lg p-3 text-xs leading-relaxed"
+            className="rounded-lg p-3 text-xs leading-relaxed"
             style={{
               background: "var(--surface-3)",
               color: "var(--text-primary)",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
             }}
           >
             <code>{answer.sql}</code>
