@@ -63,12 +63,37 @@ statement. Never DDL, DML, ATTACH, COPY, PRAGMA, INSTALL, or LOAD.
 - If the question cannot be answered from these columns, still return valid \
 SQL that comes closest, and say so in the explanation.
 
+Set chart_requested to true only if the question actually asked to see \
+something drawn -- "chart", "plot", "graph", "visualise", "show me a \
+breakdown". A question that merely asks for a number, a ranking, or a \
+comparison is answered in words, so chart_requested is false.
+
+When a result has two categorical dimensions, put one on x and name the \
+other as series, so the chart groups instead of stacking repeated labels \
+on one axis.
+
+Do not put two measures of very different magnitude in y together -- a count \
+beside a revenue total makes the smaller one invisible. Pick the one the \
+question is about.
+
 Respond with JSON only, in exactly this shape:
 {"sql": "<the query>",
  "chart": {"kind": "bar|line|area|scatter|histogram|table",
            "x": "<column>", "y": ["<column>"], "series": null,
            "title": "<short title>"},
+ "chart_requested": false,
  "explanation": "<one sentence describing what the query returns>"}"""
+
+NARRATION_PROMPT = """\
+You are a data analyst reporting a result to a colleague.
+
+Answer the question directly in one or two sentences, using the actual
+numbers from the result. Lead with the finding, not with what the query did.
+Format large numbers readably. If the result is empty, say plainly that
+nothing matched.
+
+Never mention SQL, queries, tables, rows, or the fact that you ran anything.
+Write the answer, nothing else. No preamble, no markdown, no bullet points."""
 
 
 class LlmError(RuntimeError):
@@ -80,6 +105,9 @@ class LlmResponse:
     sql: str
     chart: dict | None
     explanation: str
+    #: Whether the question asked to see something drawn, as opposed to asked
+    #: for a fact. Decides whether the UI opens on the chart or the answer.
+    chart_requested: bool = False
 
 
 def build_prompt(
@@ -144,6 +172,7 @@ def parse_response(raw: str) -> LlmResponse:
         sql=str(payload["sql"]).strip(),
         chart=chart if isinstance(chart, dict) else None,
         explanation=str(payload.get("explanation", "")).strip(),
+        chart_requested=bool(payload.get("chart_requested", False)),
     )
 
 
@@ -182,3 +211,60 @@ def ask_model(api_key: str, model: str, messages: list[dict]) -> str:
         ) from err
 
     return completion.choices[0].message.content or ""
+
+
+#: Enough rows for the model to characterise a result without paying to send
+#: a whole table back. A ranking or an aggregate is nearly always shorter.
+NARRATION_ROW_LIMIT = 30
+
+
+def build_narration_prompt(
+    question: str, columns: list[str], rows: list[dict], row_count: int
+) -> list[dict]:
+    """Ask for the finding, given the result the query actually returned.
+
+    Separate from the SQL call by necessity: the model writes the query before
+    anything has run, so at that point it has no result to describe and can
+    only restate its own intent.
+    """
+    shown = rows[:NARRATION_ROW_LIMIT]
+    body = [
+        f"Question: {question}",
+        f"Columns: {', '.join(columns) if columns else '(none)'}",
+        f"Rows returned: {row_count}",
+        f"Result{' (first ' + str(len(shown)) + ' rows)' if row_count > len(shown) else ''}:\n"
+        f"{json.dumps(shown, default=str)}",
+    ]
+    return [
+        {"role": "system", "content": NARRATION_PROMPT},
+        {"role": "user", "content": "\n\n".join(body)},
+    ]
+
+
+def narrate(
+    api_key: str,
+    model: str,
+    question: str,
+    columns: list[str],
+    rows: list[dict],
+    row_count: int,
+) -> str:
+    """Return a sentence answering the question, or an empty string.
+
+    Failure here is not fatal. The rows, the chart, and the SQL are already
+    in hand, so a narration that does not arrive costs a nicety rather than
+    the answer.
+    """
+    provider = resolve_provider(api_key, model)
+    client = OpenAI(
+        api_key=api_key, base_url=provider.base_url, timeout=REQUEST_TIMEOUT_SECONDS
+    )
+    try:
+        completion = client.chat.completions.create(
+            model=provider.model,
+            messages=build_narration_prompt(question, columns, rows, row_count),
+            temperature=0.2,
+        )
+        return (completion.choices[0].message.content or "").strip()
+    except Exception:
+        return ""

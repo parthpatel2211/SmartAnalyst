@@ -98,7 +98,12 @@ export interface UploadResponse {
 export interface AskResponse {
   question: string;
   sql: string;
+  /** The finding, written after results came back. Shown first. */
+  answer: string;
+  /** What the query does. Written before it ran, so it describes intent. */
   explanation: string;
+  /** True when the question asked to see something drawn rather than told. */
+  chart_requested: boolean;
   columns: string[];
   rows: Record<string, unknown>[];
   row_count: number;

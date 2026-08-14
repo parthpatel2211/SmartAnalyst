@@ -120,6 +120,101 @@ def test_unique_aggregate_counts_are_still_charted():
     assert spec.y == ["orders"]
 
 
+# --------------------------------------------------------------------------
+# Defects seen in real output
+# --------------------------------------------------------------------------
+
+
+def test_measures_of_incomparable_scale_do_not_share_an_axis():
+    """Seen live: Total_Orders and Total_Revenue plotted together, which
+    flattened the order counts onto the baseline where they could not be read.
+    Two scales need two charts, never a second y-axis."""
+    df = pd.DataFrame(
+        {
+            "region": ["N", "S", "E", "W"],
+            "total_orders": [1200, 1300, 1100, 1400],
+            "total_revenue": [2_400_000, 2_500_000, 2_300_000, 2_610_000],
+        }
+    )
+    spec = resolve_chart(
+        {
+            "kind": "bar",
+            "x": "region",
+            "y": ["total_orders", "total_revenue"],
+            "title": "T",
+        },
+        _result(df),
+    )
+    assert len(spec.y) == 1
+    assert spec.y == ["total_revenue"], "the larger measure survives"
+
+
+def test_measures_of_similar_scale_may_share_an_axis():
+    df = pd.DataFrame(
+        {"region": ["N", "S"], "revenue": [2_400_000, 2_500_000], "cost": [1_500_000, 1_600_000]}
+    )
+    spec = resolve_chart(
+        {"kind": "bar", "x": "region", "y": ["revenue", "cost"], "title": "T"}, _result(df)
+    )
+    assert set(spec.y) == {"revenue", "cost"}
+
+
+def test_a_second_categorical_dimension_becomes_the_series():
+    """Seen live: a region-by-category comparison drew 16 bars labelled
+    East East East East North North..., because category was dropped."""
+    rows = []
+    for region in ["East", "North", "South", "West"]:
+        for category in ["Apparel", "Footwear", "Accessories", "Outerwear"]:
+            rows.append({"region": region, "category": category, "revenue": 100})
+    spec = resolve_chart(
+        {"kind": "bar", "x": "region", "y": ["revenue"], "title": "T"},
+        _result(pd.DataFrame(rows)),
+    )
+    assert spec.series == "category"
+    assert spec.y == ["revenue"]
+
+
+def test_a_grouped_chart_plots_one_measure_only():
+    """Colour is already spent on the series; a second measure is unreadable."""
+    rows = []
+    for region in ["East", "West"]:
+        for channel in ["Online", "Retail"]:
+            rows.append({"region": region, "channel": channel, "revenue": 100, "cost": 60})
+    spec = resolve_chart(
+        {"kind": "bar", "x": "region", "y": ["revenue", "cost"], "series": "channel", "title": "T"},
+        _result(pd.DataFrame(rows)),
+    )
+    assert len(spec.y) == 1
+
+
+def test_a_single_categorical_dimension_gets_no_series():
+    df = pd.DataFrame({"region": ["N", "S"], "revenue": [1, 2]})
+    spec = resolve_chart(
+        {"kind": "bar", "x": "region", "y": ["revenue"], "title": "T"}, _result(df)
+    )
+    assert spec.series is None
+
+
+def test_fallback_also_groups_by_a_second_categorical():
+    rows = []
+    for region in ["East", "West"]:
+        for category in ["A", "B"]:
+            rows.append({"region": region, "category": category, "revenue": 10})
+    spec = resolve_chart(None, _result(pd.DataFrame(rows)))
+    assert spec.kind == "bar"
+    assert spec.series == "category"
+
+
+def test_scatter_is_left_alone_by_the_scale_guard():
+    """Scatter's two axes are independent, so differing magnitudes are fine."""
+    df = pd.DataFrame({"orders": [1, 2, 3, 4], "revenue": [1e6, 2e6, 3e6, 4e6]})
+    spec = resolve_chart(
+        {"kind": "scatter", "x": "orders", "y": ["revenue"], "title": "T"}, _result(df)
+    )
+    assert spec.kind == "scatter"
+    assert spec.y == ["revenue"]
+
+
 def test_fallback_never_returns_a_chart_referencing_absent_columns():
     """Whatever the fallback picks must be renderable against the result."""
     frames = [

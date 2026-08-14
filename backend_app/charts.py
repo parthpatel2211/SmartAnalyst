@@ -23,6 +23,13 @@ MAX_BAR_CATEGORIES = 25
 #: How many measures to plot on one chart before it becomes noise.
 MAX_SERIES = 3
 
+#: Two measures may share a y-axis only if they are within this factor of each
+#: other. A count of orders beside a revenue total differs by orders of
+#: magnitude, and plotting both flattens the smaller one onto the baseline
+#: where it cannot be read at all. The fix is one measure per axis, never a
+#: second y-axis.
+MAX_MAGNITUDE_RATIO = 20.0
+
 def _classify_columns(result: QueryResult) -> dict[str, list[str]]:
     """Sort result columns into the roles a chart can use.
 
@@ -56,6 +63,40 @@ def _classify_columns(result: QueryResult) -> dict[str, list[str]]:
     return buckets
 
 
+def _typical_magnitude(result: QueryResult, column: str) -> float:
+    values = [
+        abs(float(row[column]))
+        for row in result.rows
+        if isinstance(row.get(column), int | float) and not isinstance(row.get(column), bool)
+    ]
+    non_zero = [v for v in values if v > 0]
+    if not non_zero:
+        return 0.0
+    non_zero.sort()
+    return non_zero[len(non_zero) // 2]  # median resists a single outlier
+
+
+def drop_incomparable_measures(measures: list[str], result: QueryResult) -> list[str]:
+    """Keep only the measures that can honestly share one y-axis.
+
+    The largest is kept and anything more than MAX_MAGNITUDE_RATIO smaller is
+    dropped rather than drawn as a flat line along the baseline.
+    """
+    if len(measures) < 2:
+        return measures
+
+    scaled = [(column, _typical_magnitude(result, column)) for column in measures]
+    largest = max(magnitude for _, magnitude in scaled)
+    if largest <= 0:
+        return measures
+
+    return [
+        column
+        for column, magnitude in scaled
+        if magnitude > 0 and largest / magnitude <= MAX_MAGNITUDE_RATIO
+    ] or [max(scaled, key=lambda item: item[1])[0]]
+
+
 def fallback_chart(result: QueryResult) -> ChartSpec:
     """Pick a chart from the shape of the result alone."""
     if result.row_count == 0 or not result.columns:
@@ -68,14 +109,23 @@ def fallback_chart(result: QueryResult) -> ChartSpec:
 
     if datetimes and numeric:
         return ChartSpec(
-            kind="line", x=datetimes[0], y=numeric[:MAX_SERIES], title="Trend over time"
+            kind="line",
+            x=datetimes[0],
+            y=drop_incomparable_measures(numeric, result)[:MAX_SERIES],
+            title="Trend over time",
         )
 
     if categorical and numeric and result.row_count <= MAX_BAR_CATEGORIES:
+        # Two categorical dimensions means a grouped comparison. Without a
+        # series the second dimension vanishes and the x-axis repeats each
+        # label once per hidden group -- four bars all labelled "East".
+        series = categorical[1] if len(categorical) >= 2 else None
+        measures = drop_incomparable_measures(numeric, result)
         return ChartSpec(
             kind="bar",
             x=categorical[0],
-            y=numeric[:MAX_SERIES],
+            y=measures[:1] if series else measures[:MAX_SERIES],
+            series=series,
             title="Comparison by category",
         )
 
@@ -121,4 +171,29 @@ def resolve_chart(proposed: dict | None, result: QueryResult) -> ChartSpec:
     if series is not None and series not in available:
         series = None
 
-    return ChartSpec(kind=kind, x=x, y=list(y), series=series, title=title)
+    measures = list(y)
+
+    # The model proposed these, so they get the same checks the fallback
+    # applies. Both of the chart defects seen in practice came from accepting
+    # a proposal unexamined: a count plotted beside a revenue total, and a
+    # second categorical column dropped so every x label repeated.
+    if kind != "scatter":
+        measures = drop_incomparable_measures(measures, result)
+
+    if series is None and kind in {"bar", "line", "area"}:
+        unused_categorical = [
+            column
+            for column in _classify_columns(result)["categorical"]
+            if column != x and column not in measures
+        ]
+        if unused_categorical:
+            series = unused_categorical[0]
+
+    # A grouped chart already spends its colour on the series; a second
+    # measure on top of that is unreadable.
+    if series is not None:
+        measures = measures[:1]
+
+    return ChartSpec(
+        kind=kind, x=x, y=measures[:MAX_SERIES], series=series, title=title
+    )

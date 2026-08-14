@@ -148,7 +148,13 @@ class AskResponse(BaseModel):
     question: str
     #: The normalized query that actually ran, shown to the user verbatim.
     sql: str
+    #: The finding, written after the results came back. This is what the user
+    #: reads first; everything else is available behind a tab.
+    answer: str
+    #: What the query does. Written before it ran, so it describes intent.
     explanation: str
+    #: True when the question asked to see something drawn rather than told.
+    chart_requested: bool = False
     columns: list[str]
     rows: list[dict]
     row_count: int

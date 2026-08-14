@@ -10,7 +10,7 @@ import TableView from "./TableView";
 // paint pulls no charting code at all.
 const ChartView = lazy(() => import("./ChartView"));
 
-type Tab = "chart" | "table" | "sql";
+type Tab = "answer" | "chart" | "table" | "sql";
 
 interface Props {
   answer: AskResponse;
@@ -27,12 +27,18 @@ function download(filename: string, content: string, type: string) {
 }
 
 export default function AnswerCard({ answer, mode }: Props) {
-  // A table-kind result has nothing to show on a Chart tab, so open on Table.
-  const [tab, setTab] = useState<Tab>(answer.chart.kind === "table" ? "table" : "chart");
+  // The written answer is the default. A chart opens first only when the
+  // question actually asked to see one -- asking for a number should get a
+  // number, with everything else one click away.
+  const canChart = answer.chart.kind !== "table";
+  const [tab, setTab] = useState<Tab>(
+    answer.chart_requested && canChart ? "chart" : "answer",
+  );
   const [copied, setCopied] = useState(false);
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "chart", label: "Chart" },
+    { id: "answer", label: "Answer" },
+    ...(canChart ? [{ id: "chart" as Tab, label: "Chart" }] : []),
     { id: "table", label: "Table" },
     { id: "sql", label: "SQL" },
   ];
@@ -48,16 +54,6 @@ export default function AnswerCard({ answer, mode }: Props) {
       className="rounded-xl border"
       style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
     >
-      <div className="border-b px-4 py-3" style={{ borderColor: "var(--border)" }}>
-        <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-          {answer.explanation || answer.chart.title}
-        </p>
-        <p className="mt-1 text-xs tabular" style={{ color: "var(--text-muted)" }}>
-          {answer.row_count.toLocaleString()} row{answer.row_count === 1 ? "" : "s"}
-          {answer.truncated && " · truncated at the row limit"}
-        </p>
-      </div>
-
       <div
         className="flex items-center justify-between gap-2 border-b px-4 py-2"
         style={{ borderColor: "var(--border)" }}
@@ -111,6 +107,23 @@ export default function AnswerCard({ answer, mode }: Props) {
       </div>
 
       <div className="p-4">
+        {tab === "answer" && (
+          <div>
+            <p
+              className="text-[15px] leading-relaxed"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {answer.answer}
+            </p>
+            <p className="mt-3 text-xs tabular" style={{ color: "var(--text-muted)" }}>
+              {answer.explanation && `${answer.explanation} · `}
+              {answer.row_count.toLocaleString()} row
+              {answer.row_count === 1 ? "" : "s"}
+              {answer.truncated && " · truncated at the row limit"}
+            </p>
+          </div>
+        )}
+
         {tab === "chart" && (
           <Suspense
             fallback={
