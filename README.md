@@ -1,106 +1,99 @@
 # SmartAnalyst
 
-**Ask questions about a CSV in plain English. Get an answer, the chart, and the SQL that produced it.**
+Upload a CSV, ask questions about it in plain English, and get an answer along with the SQL that produced it.
 
 [![CI](https://github.com/parthpatel2211/SmartAnalyst/actions/workflows/ci.yml/badge.svg)](https://github.com/parthpatel2211/SmartAnalyst/actions/workflows/ci.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-![SmartAnalyst workspace](docs/media/workspace-dark.png)
-
----
+![The SmartAnalyst workspace](docs/media/workspace-dark.png)
 
 ## What it does
 
-Upload a CSV and SmartAnalyst profiles it immediately: column types, distributions, missing data, outliers, correlations, and a ranked list of what stands out. Then ask it questions in ordinary English and it answers them.
+Drop in a CSV and SmartAnalyst profiles it straight away. It works out what each column actually is, measures how much data is missing, finds outliers and correlations, and lists what looks worth knowing. None of that needs an API key, because none of it involves a language model.
 
-The distinguishing part is *how* it answers. SmartAnalyst translates each question into **DuckDB SQL**, validates that SQL against a read-only allowlist, runs it, and shows you the query alongside the answer. It never generates or executes Python.
+Then you can ask it questions. Each question becomes a DuckDB query, which gets checked before it runs, and the query is shown next to the answer so you can see exactly how the number was reached.
 
-**Profiling, insights, and correlations need no API key.** Only natural-language questions do, and you supply your own — the server never holds a credential.
+## Why it writes SQL instead of Python
 
----
+The obvious way to build this is to have a model write pandas code and run it with `exec()`. That is what the first version did, and the reasoning for changing it is the main engineering idea in the project.
 
-## Why SQL instead of generated Python
+Running model output as code means running untrusted input as a program. The usual defence is a sandbox: a stripped-down `__builtins__`, a whitelist of permitted names. Sandboxes like that are hard to get right. One reachable import or dunder attribute and the whole machine is available again. The original sandbox here allowed `__import__`, so it was never really a sandbox at all.
 
-The obvious way to build this is to have a language model write pandas code and `exec()` it. That is what the first version of this project did, and it is worth explaining why it no longer does, because the reasoning is the main engineering idea here.
+A query is a different kind of thing. It is data, not a program. You can parse it into a tree and look at it before anything happens, and it runs inside a database that has no idea what a filesystem is. So instead of trying to contain the danger, the danger stops being possible.
 
-Executing model-written code means running untrusted input as a program. The usual mitigation is a sandbox — a restricted `__builtins__`, a whitelist of allowed names. Sandboxes of that kind are very hard to make airtight; a single reachable import or dunder attribute reopens the whole machine.
+It made the tool better too. Because the query is text rather than hidden code, it can be shown to you on every answer. You can check the logic instead of trusting it.
 
-Generating **SQL** instead changes the problem. A query is data, not a program: it is parsed into a syntax tree that can be inspected before anything executes, and it runs inside a database that has no concept of a filesystem. Rather than containing the risk, the risk stops existing.
+## What you get
 
-It also produces a better tool. The generated SQL is shown to the user on every answer, which makes the result auditable instead of something you take on faith.
+Profiling runs in pandas, so the numbers are the same every time and cost nothing. For each column it reports the inferred type (identifier, measure, category, date, boolean, or text), how much is missing, distinct counts, quartiles, standard deviation, skew, and how many values sit outside 1.5 times the interquartile range.
 
----
+![Column profile and correlations](docs/media/column-profile.png)
 
-## Features
+Seven checks run over the dataset and sort what they find by severity: strong correlations, missing data, columns that never change, skewed distributions, outlier-heavy columns, duplicate rows, and categories too numerous to plot. Correlations between numeric columns are drawn as a heatmap using a diverging scale, so a negative relationship looks different from a positive one rather than merely paler.
 
-**Deterministic analysis** — computed in pandas, no model involved, so it is reproducible, instant, and free:
+Asking a question gets you a written answer containing the real numbers. The chart, the table, and the SQL each sit behind a tab. A chart opens first only if you asked to see one, so a question about which region sold most gets a sentence rather than a graph you did not want.
 
-- Per-column profile: inferred semantic type (identifier, measure, category, date, boolean, text), null share, distinct counts, quartiles, standard deviation, skew, and IQR outlier counts
-- Findings ranked by severity: strong correlations, missing data, constant columns, skewed distributions, outlier-heavy columns, duplicate rows, high cardinality
-- Pearson correlation matrix, drawn as a diverging heatmap
+Follow-ups work, because the previous questions and their answers go back to the model. "Now filter that to the West" knows what "that" was.
 
-**Natural-language questions** — question → validated SQL → result → a written answer:
+## Bring your own key
 
-- Answers are prose containing the actual numbers, written after the query runs
-- Conversation memory, so follow-ups like *"now filter that to the West"* resolve
-- Every answer carries **Answer / Chart / Table / SQL** tabs and a CSV export
-- A chart opens by default only when the question asked to see one
+Questions need an API key. Everything else does not.
 
-**Bring your own key** — OpenAI (`sk-…`) and OpenRouter (`sk-or-…`) keys both work; the provider is chosen from the key. The key lives in your browser tab's session storage, is sent per request, and is never stored, logged, or written to disk.
+![Adding an API key](docs/media/api-key.png)
 
----
+OpenAI keys and OpenRouter keys both work, and the right provider is picked from the key itself. Your key stays in the browser tab's session storage, travels with each request, and is never stored on the server, written to disk, or logged.
 
-## Architecture
+## How it fits together
 
 ```
 Browser  ──  Vercel (static)
-   React · TypeScript · Tailwind · Recharts
+   React, TypeScript, Tailwind, Recharts
    Key held in sessionStorage, sent per request as X-OpenAI-Key
         │  HTTPS
         ▼
 FastAPI  ──  Render (Docker)
    question ─► model ─► SQL ─► [ SQL GUARD ] ─► DuckDB ─► rows
                                     │
-                          rejects anything not a
+                          rejects anything that is not a
                           single read-only SELECT
         │
         ▼
    results ─► model ─► the written answer
 ```
 
-Two model calls per question, and the reason is structural. The first writes SQL *before* anything has run, so at that point it has no result to report and can only restate its own intent — which is why a single-call version answers *"this query returns the total revenue for each region"* instead of naming the region. The second call sees the rows and writes the finding.
+There are two model calls per question, and the second one is not an optimisation that got skipped. The first call writes the query before anything has run, which means it has no results to describe and can only tell you what it was trying to do. That is why a one-call version answers "this query returns the total revenue for each region" instead of naming the region. The second call sees the rows and writes the actual finding.
 
-### API
+### Endpoints
 
-| Method | Path | Purpose | Key required |
+| Method | Path | What it does | Needs a key |
 |---|---|---|---|
-| `GET` | `/health` | Liveness, and cold-start detection | no |
-| `POST` | `/datasets` | Upload a CSV, get a session and schema | no |
-| `GET` | `/datasets/{id}/profile` | Full per-column statistics | no |
-| `GET` | `/datasets/{id}/insights` | Ranked deterministic findings | no |
+| `GET` | `/health` | Liveness, and how the frontend spots a cold start | no |
+| `POST` | `/datasets` | Upload a CSV, get back a session and schema | no |
+| `GET` | `/datasets/{id}/profile` | Per-column statistics | no |
+| `GET` | `/datasets/{id}/insights` | Findings, ranked by severity | no |
 | `GET` | `/datasets/{id}/correlations` | Correlation matrix and ranked pairs | no |
-| `POST` | `/datasets/{id}/ask` | Question → answer, SQL, rows, chart | **yes** |
-
----
+| `POST` | `/datasets/{id}/ask` | Question in, answer and SQL and rows out | yes |
 
 ## Security
 
-The project's central claim is that model output is never executed as code. These are the controls that make it true, and the test suite enforces each one.
+The claim this project makes is that model output never runs as code. Here is what backs that up, and the test suite checks each one.
 
-1. **No `exec`, `eval`, or `compile` anywhere in the backend.** A test greps the source tree and fails the build if any appears.
-2. **SQL is validated by parsing, not by string matching.** `sqlglot` parses the query, which must be exactly one statement, rooted in a read-only node, containing no DDL, DML, `ATTACH`, `COPY`, `PRAGMA`, `INSTALL`, or `LOAD` node anywhere in its tree. Walking the whole tree matters: a CTE can wrap `DELETE … RETURNING` and still present a `SELECT` root.
-3. **File-reading functions are denied by name** — `read_csv`, `read_parquet`, `glob`, the cross-database scanners. Checked against both the anonymous-function node and the typed nodes sqlglot promotes some functions to, because covering only one of those let `read_csv` through during development.
-4. **DuckDB runs with external access disabled**, so a query that somehow evaded the guard still cannot reach the filesystem or the network.
-5. **Queries are bounded** by an injected row limit and a timeout.
-6. **The query is never case-folded.** An earlier version lowercased it, which rewrote string literals, so `WHERE region = 'North'` silently matched nothing.
-7. **Keys are never persisted or logged.** They arrive in a header, live in a local variable for one call, and a logging filter redacts anything key-shaped as a backstop.
+Nothing in the backend calls `exec`, `eval`, or `compile`. A test reads the source tree and fails the build if any of them turn up.
 
-The SQL guard's test suite covers 27 rejection cases plus 12 evasion attempts retained after an adversarial pass — multi-statement payloads, comment-smuggled statements, DML hidden in CTEs, quoted and case-varied function names, and file readers reached through subqueries.
+SQL is checked by parsing it, not by looking at the string. `sqlglot` builds a tree, and the query has to be exactly one statement rooted in a read-only node, with no DDL, DML, `ATTACH`, `COPY`, `PRAGMA`, `INSTALL`, or `LOAD` anywhere inside it. Walking the whole tree matters, because a CTE can hide `DELETE ... RETURNING` behind a `SELECT` at the top.
 
----
+Functions that read files are refused by name, including `read_csv`, `read_parquet`, `glob`, and the cross-database scanners. The check covers both the anonymous function node and the typed nodes that sqlglot promotes certain functions into. Covering only the first of those let `read_csv` slip through during development, which is how the second one came to be there.
 
-## Quickstart
+DuckDB itself runs with external access switched off, so a query that somehow got past the guard still cannot touch the filesystem or the network. Queries carry a row limit and a timeout.
+
+The query text is never case-folded. An earlier version lowercased it, which quietly rewrote string literals, and `WHERE region = 'North'` stopped matching anything.
+
+Keys are never kept or printed. They arrive in a header, live in one variable for the length of a single call, and a logging filter strips anything key-shaped in case something upstream tries to echo a request.
+
+The guard's tests cover 27 queries that must be refused and 12 more that came out of deliberately trying to defeat it: multi-statement payloads, statements smuggled past a comment, DML buried in a CTE, function names in odd casing or quoted, and file readers reached through a subquery.
+
+## Running it
 
 ```bash
 git clone https://github.com/parthpatel2211/SmartAnalyst.git
@@ -108,7 +101,7 @@ cd SmartAnalyst
 docker compose up
 ```
 
-The API comes up on `http://localhost:8000`. For the frontend:
+That brings the API up on `http://localhost:8000`. The frontend runs separately:
 
 ```bash
 cd frontend_app
@@ -116,9 +109,15 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` and click **Load sample dataset**. Everything except asking questions works without a key.
+Open `http://localhost:5173` and press "Load sample dataset".
 
-### Running it directly
+![Before any data is loaded](docs/media/empty-state.png)
+
+There is a light theme as well, and the charts were checked against both.
+
+![The same workspace in the light theme](docs/media/workspace-light.png)
+
+### Without Docker
 
 ```bash
 python -m venv .venv && .venv/Scripts/activate   # source .venv/bin/activate on Unix
@@ -126,7 +125,7 @@ pip install -r requirements-dev.txt
 uvicorn backend_app.main:app --reload
 ```
 
-Copy `.env.example` to `.env` to change any setting. No API key belongs in it — keys come from the caller, per request.
+Copy `.env.example` to `.env` if you want to change any setting. Do not put an API key in it. Keys come from whoever is asking the question.
 
 ### Tests
 
@@ -136,39 +135,34 @@ ruff check .
 cd frontend_app && npm test       # 12 tests
 ```
 
-### Regenerating the sample data
+### The sample data
 
-The bundled dataset is produced by a committed seeded script rather than shipped as an opaque file, so you can see exactly what was planted and confirm the tool finds it — a revenue-to-cost correlation, right-skewed prices, missing ratings, duplicate rows, seasonality, and bulk-order outliers carried by the wholesale channel.
+The bundled dataset comes out of a script that is committed alongside it, rather than arriving as a file nobody can account for. You can read what was deliberately planted in it and then watch the tool find those things: a correlation between revenue and cost, right-skewed prices, missing ratings, duplicated rows, seasonal movement, and bulk orders from the wholesale channel that show up as outliers.
 
 ```bash
 python scripts/generate_sample_data.py
 ```
 
----
+## What it does not do
 
-## Known limitations
+Session data lives in a dictionary inside one process, so the API cannot be scaled across workers as written. Doing that would need somewhere shared to keep state. For a free-tier deployment this seemed like the right trade, and it is written down here rather than left to be discovered.
 
-Stated plainly, because they are real.
+Uploads are held in memory, expire after thirty minutes, and are limited in number. Nothing touches disk, which is also why your data does not linger anywhere.
 
-- **Single worker.** Session state is an in-process dictionary, so the API cannot be scaled horizontally as written. Multi-worker operation needs an external store. This is a deliberate trade-off for a free-tier deployment, not an oversight.
-- **Sessions are ephemeral.** Uploads live in memory, expire after 30 minutes, and are capped in number. Nothing is written to disk, which is also the privacy story.
-- **10 MB and 200,000 rows** per upload.
-- **Only SQL-expressible questions.** Aggregation, filtering, grouping, ranking, and window functions are all available. Anything needing a regression or a custom statistical model is not.
-- **Free-tier cold start.** The API sleeps when idle and can take up to a minute to wake. The frontend detects this and says so rather than appearing broken.
-- **Answer quality depends on the model.** Smaller models occasionally propose a chart that does not fit the result; the server validates every chart against the columns actually returned and falls back to a shape heuristic rather than rendering something wrong.
+Files are capped at 10 MB and 200,000 rows.
 
----
+Only questions that SQL can express will work. Grouping, filtering, ranking, and window functions are all fine. Fitting a regression is not.
 
-## Tech stack
+The API sleeps when nobody is using it and can take up to a minute to wake up. The frontend notices and says so instead of looking broken.
 
-**Backend** — Python 3.11, FastAPI, DuckDB, sqlglot, pandas, pydantic-settings, pytest, ruff
-**Frontend** — Vite, React 19, TypeScript, Tailwind CSS, Recharts, Vitest
-**Infrastructure** — Docker, GitHub Actions, Render, Vercel
+Answers depend on the model behind them. Smaller models sometimes suggest a chart that does not suit the result, so every chart is checked against the columns that actually came back, and anything that does not fit falls back to a shape the data supports.
 
-Charts follow a documented design method rather than library defaults: an eight-slot categorical palette assigned in fixed order and validated for colour-vision deficiency against both light and dark surfaces, a diverging scale for correlation so positive and negative read as opposites, and no pie charts — quantity encoded as angle is read less accurately than quantity encoded as length.
+## Built with
 
----
+Python 3.11, FastAPI, DuckDB, sqlglot, pandas, pydantic-settings, pytest, and ruff on the backend. Vite, React 19, TypeScript, Tailwind, Recharts, and Vitest on the frontend. Docker, GitHub Actions, Render, and Vercel around the outside.
+
+Charts follow a written method rather than whatever the library does by default. The categorical palette has eight slots used in a fixed order, and it was validated for colour-vision deficiency against both the light and dark backgrounds. Correlation uses a diverging scale so the sign of a relationship is visible. There are no pie charts anywhere, because people read length and position more accurately than they read angle.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
