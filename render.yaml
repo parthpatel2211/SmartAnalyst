@@ -1,0 +1,19 @@
+# Render blueprint for the API.
+#
+# One worker on purpose: session state is process-local, so a second worker
+# would serve requests that cannot see the uploaded dataset. That trade-off is
+# in the README under Known limitations.
+#
+# After the frontend is deployed, set SMARTANALYST_CORS_ORIGINS to its origin.
+services:
+  - type: web
+    name: smartanalyst-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SMARTANALYST_OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: SMARTANALYST_CORS_ORIGINS
+        sync: false # set to the deployed frontend origin, as a JSON array
