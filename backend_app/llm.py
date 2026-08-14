@@ -19,6 +19,36 @@ _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_SAMPLE_ROWS = 3
 
+#: OpenRouter issues keys with this prefix and speaks the OpenAI wire format at
+#: its own host. Bring-your-own-key means the server cannot know in advance
+#: which provider a caller's key belongs to, and sending it to the wrong host
+#: produces an authentication error that looks like a bad key rather than a
+#: misrouted request.
+OPENROUTER_PREFIX = "sk-or-"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+@dataclass(frozen=True)
+class Provider:
+    name: str
+    base_url: str | None
+    model: str
+
+
+def resolve_provider(api_key: str, model: str) -> Provider:
+    """Pick the endpoint and model name that match the caller's key.
+
+    OpenRouter namespaces its model ids by vendor, so a bare "gpt-4o-mini"
+    has to become "openai/gpt-4o-mini" there while staying bare on OpenAI.
+    """
+    if api_key.startswith(OPENROUTER_PREFIX):
+        routed = model if "/" in model else f"openai/{model}"
+        return Provider(name="OpenRouter", base_url=OPENROUTER_BASE_URL, model=routed)
+
+    # A vendor-prefixed id is meaningless to OpenAI directly; strip it.
+    direct = model.split("/", 1)[-1] if "/" in model else model
+    return Provider(name="OpenAI", base_url=None, model=direct)
+
 SYSTEM_PROMPT = """\
 You are a senior data analyst. You answer questions about a single DuckDB \
 table named `data` by writing SQL.
@@ -118,25 +148,37 @@ def parse_response(raw: str) -> LlmResponse:
 
 
 def ask_model(api_key: str, model: str, messages: list[dict]) -> str:
-    """Make a single OpenAI call.
+    """Make a single completion call against whichever provider the key is for.
 
     The key is used here and nowhere else: not stored, not logged, not
-    written to disk. Provider errors are reported by exception type only,
-    because their messages sometimes echo the request, and the request
-    carries the key.
+    written to disk. Provider errors are reported by exception type and by
+    which host was called, never by message, because provider messages
+    sometimes echo the request and the request carries the key.
     """
-    client = OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS)
+    provider = resolve_provider(api_key, model)
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=provider.base_url,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+
     try:
         completion = client.chat.completions.create(
-            model=model,
+            model=provider.model,
             messages=messages,
             temperature=0,
             response_format={"type": "json_object"},
         )
     except Exception as err:
+        # Naming the provider matters: an authentication failure most often
+        # means the key belongs to a different one, and a message that only
+        # says "check your key is valid" sends people to look in the wrong
+        # place entirely.
         raise LlmError(
-            f"The language model call failed ({type(err).__name__}). "
-            "Check that your API key is valid and has credit."
+            f"The {provider.name} call failed ({type(err).__name__}). "
+            f"This key was sent to {provider.name}; check it belongs there, "
+            "is still active, and has credit."
         ) from err
 
     return completion.choices[0].message.content or ""

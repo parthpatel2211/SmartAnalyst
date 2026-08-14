@@ -31,12 +31,17 @@ export default function ApiKeyDialog({ open, onSave, onClose }: Props) {
           className="text-sm font-semibold"
           style={{ color: "var(--text-primary)" }}
         >
-          Add your OpenAI API key
+          Add an API key
         </h2>
 
         <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
           Natural-language questions need a key. Profiling, insights, and
           correlations do not — those already work.
+        </p>
+
+        <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+          OpenAI (<code>sk-…</code>) and OpenRouter (<code>sk-or-…</code>) keys
+          both work. The provider is chosen from the key itself.
         </p>
 
         <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
@@ -87,7 +92,7 @@ export default function ApiKeyDialog({ open, onSave, onClose }: Props) {
         </form>
 
         <p className="mt-3 text-[10px]" style={{ color: "var(--text-muted)" }}>
-          Get one at platform.openai.com/api-keys
+          platform.openai.com/api-keys · openrouter.ai/keys
         </p>
       </div>
     </div>
