@@ -14,6 +14,6 @@ services:
     healthCheckPath: /health
     envVars:
       - key: SMARTANALYST_OPENAI_MODEL
-        value: gpt-4o-mini
+        value: gpt-5.1
       - key: SMARTANALYST_CORS_ORIGINS
         sync: false # set to the deployed frontend origin, as a JSON array

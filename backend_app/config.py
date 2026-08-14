@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     #: Model used for question-to-SQL translation. Given bare, it is namespaced
     #: automatically for providers that require it (see llm.resolve_provider).
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-5.1"
 
     #: Origins permitted by CORS. Set to the deployed frontend URL in production.
     cors_origins: list[str] = [

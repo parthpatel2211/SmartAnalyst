@@ -193,10 +193,13 @@ def ask_model(api_key: str, model: str, messages: list[dict]) -> str:
     )
 
     try:
+        # temperature is deliberately not sent. Reasoning-capable models
+        # reject any value other than the default, and pinning it to 0 would
+        # make the request fail outright on those. The JSON response format
+        # and a tightly specified prompt constrain the output instead.
         completion = client.chat.completions.create(
             model=provider.model,
             messages=messages,
-            temperature=0,
             response_format={"type": "json_object"},
         )
     except Exception as err:
@@ -263,7 +266,6 @@ def narrate(
         completion = client.chat.completions.create(
             model=provider.model,
             messages=build_narration_prompt(question, columns, rows, row_count),
-            temperature=0.2,
         )
         return (completion.choices[0].message.content or "").strip()
     except Exception:
