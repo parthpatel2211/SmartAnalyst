@@ -27,7 +27,10 @@ const EXAMPLE_QUESTIONS = [
   "Top 10 orders by profit",
 ];
 
-const SAMPLE_URL = "/sample_orders.csv";
+// Resolved against the deploy base rather than the domain root. GitHub Pages
+// serves a project site from /<repo>/, where a leading-slash path would point
+// at the wrong host directory and 404.
+const SAMPLE_URL = `${import.meta.env.BASE_URL}sample_orders.csv`;
 const COLD_START_AFTER_MS = 3000;
 
 export default function App() {

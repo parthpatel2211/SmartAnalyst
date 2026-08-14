@@ -1,0 +1,72 @@
+name: Deploy frontend to Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Allows one deploy at a time, and lets a running one finish rather than
+# leaving the site half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend_app/package-lock.json
+
+      - name: Check the API URL is configured
+        run: |
+          if [ -z "${{ vars.API_URL }}" ]; then
+            echo "::error::Repository variable API_URL is not set."
+            echo "Set it under Settings > Secrets and variables > Actions > Variables"
+            echo "to the deployed backend origin, for example https://smartanalyst-api.onrender.com"
+            exit 1
+          fi
+          echo "Building against ${{ vars.API_URL }}"
+
+      - run: npm ci
+        working-directory: frontend_app
+
+      - name: Build
+        working-directory: frontend_app
+        env:
+          # Vite inlines these at build time, so they are baked into the bundle
+          # rather than read at runtime.
+          VITE_API_URL: ${{ vars.API_URL }}
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Serve index.html for unknown paths
+        # Pages has no rewrite rules, so a 404 copy of the entry point keeps
+        # deep links and refreshes working.
+        run: cp frontend_app/dist/index.html frontend_app/dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend_app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
