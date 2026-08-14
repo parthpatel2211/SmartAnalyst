@@ -30,3 +30,6 @@ LinkedInPost.png
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Uncropped screenshots: these still show browser chrome and bookmarks
+docs/media/raw/

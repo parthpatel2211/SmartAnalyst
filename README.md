@@ -32,9 +32,33 @@ Profiling runs in pandas, so the numbers are the same every time and cost nothin
 
 Seven checks run over the dataset and sort what they find by severity: strong correlations, missing data, columns that never change, skewed distributions, outlier-heavy columns, duplicate rows, and categories too numerous to plot. Correlations between numeric columns are drawn as a heatmap using a diverging scale, so a negative relationship looks different from a positive one rather than merely paler.
 
-Asking a question gets you a written answer containing the real numbers. The chart, the table, and the SQL each sit behind a tab. A chart opens first only if you asked to see one, so a question about which region sold most gets a sentence rather than a graph you did not want.
+## Asking it things
 
-Follow-ups work, because the previous questions and their answers go back to the model. "Now filter that to the West" knows what "that" was.
+A question gets you a written answer with the real numbers in it. The chart, the table, and the SQL each sit behind a tab.
+
+![Answering a question in prose](docs/media/answer-region.png)
+
+A chart opens first only if you asked to see one, so a question about which region sold most gets a sentence instead of a graph you did not ask for. Ask for a chart and you get the chart.
+
+![Monthly revenue as a line chart](docs/media/chart-monthly-revenue.png)
+
+That one works because dates are parsed properly on the way in. Left as text, the column would never reach `DATE_TRUNC` and there would be no time axis to plot against.
+
+Every answer carries the query that produced it, laid out to be read rather than squeezed onto one line.
+
+![The generated SQL](docs/media/sql-tab.png)
+
+Ask something with two dimensions in it and the second one becomes the series, so the bars group instead of stacking four unlabelled columns onto each tick.
+
+![Revenue by region and category](docs/media/chart-grouped-bars.png)
+
+Follow-ups work, because previous questions and their answers go back to the model. "Now filter that to the West" knows what "that" was.
+
+Asking it to change the data does not get you far.
+
+![A request to delete rows](docs/media/refusal-and-grouped.png)
+
+Worth being precise about what that picture shows. The model declined and wrote a query returning nothing, so the guard was never given a `DELETE` to reject. The prompt was obeyed, which is pleasant but is not a security property. What stops a destructive query is the validation described below, and the evidence for that is the test suite rather than a screenshot.
 
 ## Bring your own key
 
