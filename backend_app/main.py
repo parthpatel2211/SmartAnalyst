@@ -52,6 +52,21 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "X-OpenAI-Key"],
     )
 
+    @app.get("/", tags=["meta"])
+    async def root() -> dict[str, str]:
+        """Point visitors somewhere useful.
+
+        People do open the API's base URL, and a bare 404 tells them nothing
+        about whether the service is broken or simply has no page here.
+        """
+        return {
+            "service": "SmartAnalyst API",
+            "docs": "/docs",
+            "health": "/health",
+            "app": "https://parthpatel2211.github.io/SmartAnalyst/",
+            "source": "https://github.com/parthpatel2211/SmartAnalyst",
+        }
+
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
         """Liveness probe, also used by the frontend to detect a cold start."""

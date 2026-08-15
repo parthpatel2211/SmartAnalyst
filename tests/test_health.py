@@ -14,6 +14,15 @@ def test_health_returns_ok():
     assert response.json() == {"status": "ok"}
 
 
+def test_root_points_somewhere_useful():
+    """People open the base URL. A bare 404 says nothing about whether the
+    service is broken or simply has no page there."""
+    body = TestClient(create_app()).get("/").json()
+    assert body["docs"] == "/docs"
+    assert body["health"] == "/health"
+    assert "github.com" in body["source"]
+
+
 def test_settings_hold_no_api_key():
     """The server never holds a credential of its own; keys arrive per-request."""
     settings = get_settings()
