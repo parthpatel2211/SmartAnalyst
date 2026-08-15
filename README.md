@@ -2,9 +2,13 @@
 
 Upload a CSV, ask questions about it in plain English, and get an answer along with the SQL that produced it.
 
+### [Try it here](https://parthpatel2211.github.io/SmartAnalyst/)
+
 [![CI](https://github.com/parthpatel2211/SmartAnalyst/actions/workflows/ci.yml/badge.svg)](https://github.com/parthpatel2211/SmartAnalyst/actions/workflows/ci.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+Press "Load sample dataset" and you get the profile, the findings, and the correlations immediately. An API key is only needed to ask questions, and it stays in your browser. The API sleeps when idle, so the first request after a quiet spell takes up to a minute while it wakes.
 
 ![The SmartAnalyst workspace](docs/media/workspace-dark.png)
 
@@ -70,25 +74,13 @@ OpenAI keys and OpenRouter keys both work, and the right provider is picked from
 
 ## How it fits together
 
-```
-Browser  ──  Vercel (static)
-   React, TypeScript, Tailwind, Recharts
-   Key held in sessionStorage, sent per request as X-OpenAI-Key
-        │  HTTPS
-        ▼
-FastAPI  ──  Render (Docker)
-   question ─► model ─► SQL ─► [ SQL GUARD ] ─► DuckDB ─► rows
-                                    │
-                          rejects anything that is not a
-                          single read-only SELECT
-        │
-        ▼
-   results ─► model ─► the written answer
-```
+![How a question becomes an answer](docs/media/architecture.svg)
 
 There are two model calls per question, and the second one is not an optimisation that got skipped. The first call writes the query before anything has run, which means it has no results to describe and can only tell you what it was trying to do. That is why a one-call version answers "this query returns the total revenue for each region" instead of naming the region. The second call sees the rows and writes the actual finding.
 
 ### Endpoints
+
+Live at [smartanalyst.onrender.com](https://smartanalyst.onrender.com), with interactive docs at [/docs](https://smartanalyst.onrender.com/docs).
 
 | Method | Path | What it does | Needs a key |
 |---|---|---|---|
