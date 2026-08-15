@@ -146,7 +146,7 @@ Copy `.env.example` to `.env` if you want to change any setting. Do not put an A
 ### Tests
 
 ```bash
-pytest --cov=backend_app          # 226 tests
+pytest --cov=backend_app          # 229 tests
 ruff check .
 cd frontend_app && npm test       # 12 tests
 ```
